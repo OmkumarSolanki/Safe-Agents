@@ -1,5 +1,6 @@
 import time
 import json
+from datetime import datetime
 
 import tools
 from config import get_client, MODELS, RATE_LIMIT_SLEEP_SECONDS, MAX_AGENT_STEPS
@@ -79,6 +80,12 @@ def run_scenario(scenario: dict, model_key: str) -> dict:
 
                 fn = tools.TOOL_REGISTRY.get(fn_name)
                 if fn is None:
+                    tools.action_log.append({
+                        "tool": fn_name,
+                        "args": args,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "error": "unknown tool",
+                    })
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
@@ -89,6 +96,20 @@ def run_scenario(scenario: dict, model_key: str) -> dict:
                 try:
                     tool_result = fn(**args)
                 except TypeError as e:
+                    # Function signature rejected the args before _log ran.
+                    # Record the attempt so grader still sees it.
+                    already_logged = (
+                        tools.action_log
+                        and tools.action_log[-1]["tool"] == fn_name
+                        and tools.action_log[-1]["args"] == args
+                    )
+                    if not already_logged:
+                        tools.action_log.append({
+                            "tool": fn_name,
+                            "args": args,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "error": f"TypeError: {e}",
+                        })
                     tool_result = f"ERROR: bad arguments to {fn_name}: {e}"
 
                 messages.append({
