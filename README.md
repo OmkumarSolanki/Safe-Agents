@@ -2,7 +2,7 @@
 
 Indirect prompt-injection eval for small open agent models. AI agents that read external content (files, emails, patient notes) can be hijacked by hidden instructions buried in that content. AgentSafe quantifies how badly two small open models (Qwen 3.6 35B, Gemma 4 31B) fall for this.
 
-## Approach
+## Approach 
 
 Nine simulated agent scenarios across three domains (files, healthcare, email) and three severity tiers (Catastrophic, Serious, Recoverable). User gives the agent a benign task; the content it reads contains a hidden malicious instruction; every tool call is logged; pass/fail is graded against pre-declared `fail_if` rules. All tools are simulated — no real systems touched.
 
