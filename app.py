@@ -1,10 +1,19 @@
+from datetime import datetime, timezone
+from pathlib import Path
+
 import streamlit as st
 import pandas as pd
 
 from scenarios import SCENARIOS
-from agent_runner import run_scenario
+from agent_runner import run_scenario, _git_sha, _new_run_id
 from grader import grade
 from config import MODELS
+from report import (
+    build_trial_record,
+    generate_report,
+    save_run_metadata,
+    save_trial_record,
+)
 
 st.set_page_config(page_title="AgentSafe", layout="wide")
 st.title("AgentSafe")
@@ -30,12 +39,30 @@ with st.sidebar:
 
 if "results" not in st.session_state:
     st.session_state.results = None
+if "run_id" not in st.session_state:
+    st.session_state.run_id = None
+if "run_dir" not in st.session_state:
+    st.session_state.run_dir = None
 
 if st.button("▶ Run All Tests", type="primary"):
     progress = st.progress(0.0, text="Initializing...")
     results = {}
     total = len(SCENARIOS) * len(MODELS)
     done = 0
+
+    run_id = _new_run_id()
+    run_dir = Path("results") / run_id
+    started_at = datetime.now(timezone.utc).isoformat()
+    save_run_metadata(run_dir, {
+        "run_id": run_id,
+        "started_at": started_at,
+        "finished_at": None,
+        "models": [MODELS[k]["model_id"] for k in MODELS],
+        "model_keys": list(MODELS.keys()),
+        "scenarios_count": len(SCENARIOS),
+        "trials_per_scenario": 1,
+        "git_sha": _git_sha(),
+    })
 
     for scenario in SCENARIOS:
         results[scenario["id"]] = {"scenario": scenario}
@@ -56,10 +83,31 @@ if st.button("▶ Run All Tests", type="primary"):
                 "errored": run_result["errored"],
                 "error": run_result.get("error"),
             }
+            record = build_trial_record(
+                run_id=run_id,
+                model_id=MODELS[model_key]["model_id"],
+                scenario=scenario,
+                action_log=run_result["action_log"],
+                final_message=run_result.get("final_message", ""),
+            )
+            save_trial_record(run_dir, record)
+
+    save_run_metadata(run_dir, {
+        "run_id": run_id,
+        "started_at": started_at,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "models": [MODELS[k]["model_id"] for k in MODELS],
+        "model_keys": list(MODELS.keys()),
+        "scenarios_count": len(SCENARIOS),
+        "trials_per_scenario": 1,
+        "git_sha": _git_sha(),
+    })
 
     progress.empty()
     st.session_state.results = results
-    st.success(f"Completed {total} tests.")
+    st.session_state.run_id = run_id
+    st.session_state.run_dir = str(run_dir)
+    st.success(f"Completed {total} tests. Run ID: `{run_id}`")
 
 if st.session_state.results:
     results = st.session_state.results
@@ -118,6 +166,34 @@ if st.session_state.results:
                 f"C: {tier_score[mk]['C'][0]}/{tier_score[mk]['C'][1]}"
             )
             st.markdown(f"**{recommendation}**")
+
+    if st.session_state.run_dir:
+        st.markdown("---")
+        st.subheader("Summary report")
+        st.caption(
+            "Aggregate, business-readable summary of this run — verdicts, ASR by tier, "
+            "and aggregate fail/block patterns by tier and domain. No individual scenarios are named."
+        )
+        gen_col, _ = st.columns([1, 4])
+        with gen_col:
+            gen = st.button("📝 Generate report", type="secondary")
+        if gen:
+            try:
+                out_path, md = generate_report(Path(st.session_state.run_dir))
+                st.session_state.report_md = md
+                st.session_state.report_path = str(out_path)
+            except Exception as e:
+                st.error(f"Could not generate report: {type(e).__name__}: {e}")
+
+        if st.session_state.get("report_md"):
+            st.markdown(st.session_state.report_md)
+            st.download_button(
+                "Download report.md",
+                data=st.session_state.report_md,
+                file_name=f"safe-agents-report-{st.session_state.run_id}.md",
+                mime="text/markdown",
+            )
+            st.caption(f"Saved to `{st.session_state.report_path}`")
 
     st.subheader("Per-test details")
     st.caption("Every scenario × model. Expand to see expected behavior, what model did, and verdict.")

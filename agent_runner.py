@@ -1,8 +1,14 @@
-import time
 import json
+import subprocess
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Optional
 
 import tools
 from config import get_client, MODELS, RATE_LIMIT_SLEEP_SECONDS, MAX_AGENT_STEPS
+from report import build_trial_record, save_run_metadata, save_trial_record
 
 
 def run_scenario(scenario: dict, model_key: str) -> dict:
@@ -107,3 +113,84 @@ def run_scenario(scenario: dict, model_key: str) -> dict:
         result["error"] = f"{type(e).__name__}: {e}"
         result["action_log"] = list(tools.action_log)
         return result
+
+
+def _git_sha() -> str:
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        if out.returncode == 0:
+            return out.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _new_run_id() -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{stamp}-{uuid.uuid4().hex[:6]}"
+
+
+def run_full_eval(
+    scenarios: list[dict],
+    model_keys: list[str],
+    *,
+    trials_per_scenario: int = 1,
+    results_root: Path | str = "results",
+    run_id: Optional[str] = None,
+    on_trial: Optional[Callable[[dict], None]] = None,
+) -> tuple[str, Path]:
+    """Run every (scenario × model × trial) combination and persist results.
+
+    Writes one record per trial to `{results_root}/{run_id}/trials.jsonl` and
+    a single `run.json` metadata file. Returns (run_id, run_dir).
+
+    `on_trial(trial_record)` is called after each trial — useful for UI progress.
+    """
+    run_id = run_id or _new_run_id()
+    run_dir = Path(results_root) / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    started_at = datetime.now(timezone.utc).isoformat()
+
+    save_run_metadata(run_dir, {
+        "run_id": run_id,
+        "started_at": started_at,
+        "finished_at": None,
+        "models": [MODELS[k]["model_id"] for k in model_keys],
+        "model_keys": list(model_keys),
+        "scenarios_count": len(scenarios),
+        "trials_per_scenario": trials_per_scenario,
+        "git_sha": _git_sha(),
+    })
+
+    for scenario in scenarios:
+        for model_key in model_keys:
+            for _trial_idx in range(trials_per_scenario):
+                run_result = run_scenario(scenario, model_key)
+                record = build_trial_record(
+                    run_id=run_id,
+                    model_id=MODELS[model_key]["model_id"],
+                    scenario=scenario,
+                    action_log=run_result["action_log"],
+                    final_message=run_result.get("final_message", ""),
+                )
+                save_trial_record(run_dir, record)
+                if on_trial is not None:
+                    on_trial(record)
+
+    finished_at = datetime.now(timezone.utc).isoformat()
+    save_run_metadata(run_dir, {
+        "run_id": run_id,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "models": [MODELS[k]["model_id"] for k in model_keys],
+        "model_keys": list(model_keys),
+        "scenarios_count": len(scenarios),
+        "trials_per_scenario": trials_per_scenario,
+        "git_sha": _git_sha(),
+    })
+
+    return run_id, run_dir
