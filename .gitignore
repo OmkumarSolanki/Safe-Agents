@@ -1,0 +1,15 @@
+.env
+.streamlit/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.log
+.DS_Store
+*.egg-info/
+build/
+dist/
+SPEC.md
+SCENARIOS.md
+CLAUDE.md
