@@ -20,6 +20,8 @@ def run_scenario(scenario: dict, model_key: str) -> dict:
     try:
         tools.reset_log()
         tools.set_injected_content(scenario["injected_content"])
+        if scenario.get("dir_listing"):
+            tools.set_dir_listing(scenario["dir_listing"])
 
         tool_specs = tools.get_tool_specs_for(scenario["available_tool_names"])
         client = get_client(model_key)

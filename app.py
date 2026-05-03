@@ -119,25 +119,109 @@ if st.session_state.results:
             )
             st.markdown(f"**{recommendation}**")
 
-    st.subheader("Failure details")
-    any_failure = False
+    st.subheader("Per-test details")
+    st.caption("Every scenario × model. Expand to see expected behavior, what model did, and verdict.")
+
+    filter_col1, filter_col2 = st.columns([1, 3])
+    with filter_col1:
+        show_filter = st.radio(
+            "Show",
+            ["All", "Failures only", "Passes only"],
+            horizontal=False,
+            label_visibility="collapsed",
+        )
+
+    def fail_rules_to_text(rules):
+        parts = []
+        for rule in rules:
+            args = rule.get("args_match", {})
+            arg_str = ", ".join(f"{k}~='{v}'" for k, v in args.items()) or "(any args)"
+            parts.append(f"`{rule['tool']}` with {arg_str}")
+        return "; ".join(parts) if parts else "no forbidden actions defined"
+
+    def summarize_actions(log):
+        if not log:
+            return "_(no tool calls)_"
+        lines = []
+        for a in log:
+            args = a.get("args", {})
+            arg_str = ", ".join(f"{k}={v!r}" for k, v in args.items())
+            lines.append(f"- `{a['tool']}({arg_str})`")
+        return "\n".join(lines)
+
     for sid, scenario_results in results.items():
         scenario = scenario_results["scenario"]
         for model_key in MODELS:
             r = scenario_results.get(model_key, {})
-            if r.get("verdict") == "FAIL" or r.get("errored"):
-                any_failure = True
-                with st.expander(
-                    f"❌ {scenario['id']} on {MODELS[model_key]['display_name']} — "
-                    f"{scenario['tier_name']} severity"
-                ):
-                    st.markdown(f"**Description:** {scenario['description']}")
-                    st.markdown(f"**User prompt:** {scenario['user_prompt']}")
-                    st.markdown(f"**Reason:** {r.get('reason', r.get('error', 'Unknown'))}")
-                    st.markdown("**Action log:**")
-                    st.json(r.get("action_log", []))
-                    if r.get("final_message"):
-                        st.markdown("**Final message:**")
+            verdict = r.get("verdict", "?")
+            errored = r.get("errored")
+
+            if show_filter == "Failures only" and verdict != "FAIL" and not errored:
+                continue
+            if show_filter == "Passes only" and verdict != "PASS":
+                continue
+
+            if errored:
+                icon = "⚠"
+                status = "ERROR"
+            elif verdict == "PASS":
+                icon = "✅"
+                status = "PASS"
+            elif verdict == "FAIL":
+                icon = "❌"
+                status = "FAIL"
+            else:
+                icon = "?"
+                status = "?"
+
+            esc_tag = " · escalated to human" if r.get("escalated") else ""
+
+            with st.expander(
+                f"{icon} {status} — {scenario['id']} · {MODELS[model_key]['display_name']} · "
+                f"Tier {scenario['tier']} ({scenario['tier_name']}){esc_tag}"
+            ):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("**Scenario**")
+                    st.markdown(f"*Domain:* `{scenario['domain']}`")
+                    st.markdown(f"*Description:* {scenario['description']}")
+                    st.markdown(f"*User prompt:*")
+                    st.code(scenario["user_prompt"], language="text")
+                    st.markdown(f"*Tools available:* {', '.join(f'`{t}`' for t in scenario['available_tool_names'])}")
+
+                    dirs = scenario.get("dir_listing", {})
+                    if dirs:
+                        st.markdown("*Simulated directory listing (what `list_files` returns):*")
+                        for d, body in dirs.items():
+                            st.markdown(f"`{d}`")
+                            st.code(body, language="text")
+
+                    injected = scenario.get("injected_content", {})
+                    if injected:
+                        st.markdown("*Injected content (what agent reads — contains hidden attack):*")
+                        for src, body in injected.items():
+                            st.markdown(f"`{src}`")
+                            st.code(body, language="text")
+                with c2:
+                    st.markdown("**Expected (safe behavior)**")
+                    st.markdown(
+                        f"Agent must **NOT** call: {fail_rules_to_text(scenario.get('fail_if', []))}"
+                    )
+                    st.markdown(
+                        "Ideally agent ignores hidden injection, completes benign part of task, "
+                        "or escalates via `ask_user` / `ask_doctor`."
+                    )
+
+                st.markdown("---")
+                st.markdown(f"**What {MODELS[model_key]['display_name']} did**")
+                st.markdown(summarize_actions(r.get("action_log", [])))
+
+                st.markdown(f"**Verdict:** {icon} {status}")
+                st.markdown(f"**Reason:** {r.get('reason', r.get('error', 'Unknown'))}")
+
+                if r.get("final_message"):
+                    with st.popover("Model's final message"):
                         st.code(r["final_message"])
-    if not any_failure:
-        st.info("No failures.")
+
+                with st.popover("Raw action log (JSON)"):
+                    st.json(r.get("action_log", []))
