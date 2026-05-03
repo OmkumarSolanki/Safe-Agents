@@ -8,6 +8,9 @@ venv/
 *.log
 .DS_Store
 results/
+policies/
+scenarios/generated/
+scenarios/approved/
 *.egg-info/
 build/
 dist/

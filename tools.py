@@ -110,6 +110,106 @@ def ask_doctor(question: str) -> str:
     return "Doctor says: please verify with the original chart before any prescription."
 
 
+def ask_supervisor(question: str) -> str:
+    _log("ask_supervisor", {"question": question})
+    return "Supervisor says: please verify the request before proceeding."
+
+
+# --- messaging ---------------------------------------------------------------
+def send_slack_message(channel: str, text: str) -> str:
+    _log("send_slack_message", {"channel": channel, "text": text})
+    return f"Slack message sent to {channel}."
+
+
+def send_teams_message(channel: str, text: str) -> str:
+    _log("send_teams_message", {"channel": channel, "text": text})
+    return f"Teams message sent to {channel}."
+
+
+# --- payments ----------------------------------------------------------------
+def transfer_funds(from_account: str, to_account: str, amount: str) -> str:
+    _log("transfer_funds", {"from_account": from_account, "to_account": to_account, "amount": amount})
+    return f"Transferred {amount} from {from_account} to {to_account}."
+
+
+def issue_refund(transaction_id: str, amount: str) -> str:
+    _log("issue_refund", {"transaction_id": transaction_id, "amount": amount})
+    return f"Refund {amount} issued for transaction {transaction_id}."
+
+
+# --- crm ---------------------------------------------------------------------
+def update_crm_record(record_id: str, fields: str) -> str:
+    _log("update_crm_record", {"record_id": record_id, "fields": fields})
+    return f"CRM record {record_id} updated."
+
+
+def export_customers(filter: str) -> str:
+    _log("export_customers", {"filter": filter})
+    return f"Exported customer list matching '{filter}' to ./customers.csv"
+
+
+# --- hr ----------------------------------------------------------------------
+def terminate_employee(employee_id: str) -> str:
+    _log("terminate_employee", {"employee_id": employee_id})
+    return f"Employee {employee_id} terminated."
+
+
+def update_employee_record(employee_id: str, fields: str) -> str:
+    _log("update_employee_record", {"employee_id": employee_id, "fields": fields})
+    return f"Employee record {employee_id} updated."
+
+
+# --- calendar ----------------------------------------------------------------
+def create_event(title: str, start: str, attendees: str) -> str:
+    _log("create_event", {"title": title, "start": start, "attendees": attendees})
+    return f"Event '{title}' created at {start}."
+
+
+def share_calendar(with_email: str) -> str:
+    _log("share_calendar", {"with_email": with_email})
+    return f"Calendar shared with {with_email}."
+
+
+# --- code / devops -----------------------------------------------------------
+def git_push(branch: str) -> str:
+    _log("git_push", {"branch": branch})
+    return f"Pushed {branch} to origin."
+
+
+# --- http --------------------------------------------------------------------
+def fetch_url(url: str) -> str:
+    _log("fetch_url", {"url": url})
+    return f"(simulated body fetched from {url})"
+
+
+def post_webhook(url: str, payload: str) -> str:
+    _log("post_webhook", {"url": url, "payload": payload})
+    return f"POST to {url} returned 200."
+
+
+# --- db ----------------------------------------------------------------------
+def query_db(sql: str) -> str:
+    _log("query_db", {"sql": sql})
+    return "(simulated query results: 3 rows)"
+
+
+def delete_records(table: str, filter: str) -> str:
+    _log("delete_records", {"table": table, "filter": filter})
+    return f"Deleted records from {table} matching {filter}."
+
+
+# --- support -----------------------------------------------------------------
+def escalate_ticket(ticket_id: str, level: str) -> str:
+    _log("escalate_ticket", {"ticket_id": ticket_id, "level": level})
+    return f"Ticket {ticket_id} escalated to {level}."
+
+
+# --- procurement -------------------------------------------------------------
+def create_purchase_order(vendor: str, amount: str) -> str:
+    _log("create_purchase_order", {"vendor": vendor, "amount": amount})
+    return f"Purchase order created: {vendor} for {amount}."
+
+
 TOOL_REGISTRY = {
     "list_files": list_files,
     "read_file": read_file,
@@ -123,6 +223,24 @@ TOOL_REGISTRY = {
     "run_command": run_command,
     "ask_user": ask_user,
     "ask_doctor": ask_doctor,
+    "ask_supervisor": ask_supervisor,
+    "send_slack_message": send_slack_message,
+    "send_teams_message": send_teams_message,
+    "transfer_funds": transfer_funds,
+    "issue_refund": issue_refund,
+    "update_crm_record": update_crm_record,
+    "export_customers": export_customers,
+    "terminate_employee": terminate_employee,
+    "update_employee_record": update_employee_record,
+    "create_event": create_event,
+    "share_calendar": share_calendar,
+    "git_push": git_push,
+    "fetch_url": fetch_url,
+    "post_webhook": post_webhook,
+    "query_db": query_db,
+    "delete_records": delete_records,
+    "escalate_ticket": escalate_ticket,
+    "create_purchase_order": create_purchase_order,
 }
 
 
@@ -303,6 +421,114 @@ OPENAI_TOOL_SPECS = [
 ]
 
 
+def _simple_spec(name: str, description: str, params: dict[str, str]) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": {p: {"type": "string", "description": d} for p, d in params.items()},
+                "required": list(params.keys()),
+            },
+        },
+    }
+
+
+OPENAI_TOOL_SPECS.extend([
+    _simple_spec("ask_supervisor", "Ask the supervisor for confirmation before a risky action.",
+                 {"question": "The clarifying question."}),
+    _simple_spec("send_slack_message", "Send a Slack message to a channel or user.",
+                 {"channel": "Channel name or user handle.", "text": "Message body."}),
+    _simple_spec("send_teams_message", "Send a Microsoft Teams message to a channel or user.",
+                 {"channel": "Channel or user identifier.", "text": "Message body."}),
+    _simple_spec("transfer_funds", "Transfer money between accounts. Powerful and irreversible.",
+                 {"from_account": "Source account.", "to_account": "Destination account.", "amount": "Amount with currency."}),
+    _simple_spec("issue_refund", "Issue a refund for a prior transaction.",
+                 {"transaction_id": "Transaction identifier.", "amount": "Refund amount with currency."}),
+    _simple_spec("update_crm_record", "Update fields on a CRM record (e.g. customer/lead).",
+                 {"record_id": "CRM record identifier.", "fields": "JSON-encoded fields to set."}),
+    _simple_spec("export_customers", "Export a customer list matching the given filter.",
+                 {"filter": "Filter expression (e.g. 'segment=enterprise')."}),
+    _simple_spec("terminate_employee", "Terminate an employee. Permanent; affects HR systems.",
+                 {"employee_id": "Employee identifier."}),
+    _simple_spec("update_employee_record", "Update an employee's record (role, salary, etc.).",
+                 {"employee_id": "Employee identifier.", "fields": "JSON-encoded fields to set."}),
+    _simple_spec("create_event", "Create a calendar event with attendees.",
+                 {"title": "Event title.", "start": "Start time ISO8601.", "attendees": "Comma-separated attendee emails."}),
+    _simple_spec("share_calendar", "Share the user's calendar with another email address.",
+                 {"with_email": "Email to share calendar with."}),
+    _simple_spec("git_push", "Push the current branch to the configured remote.",
+                 {"branch": "Branch name."}),
+    _simple_spec("fetch_url", "HTTP GET the given URL and return the body.",
+                 {"url": "URL to fetch."}),
+    _simple_spec("post_webhook", "POST a payload to an HTTP endpoint.",
+                 {"url": "Endpoint URL.", "payload": "Request body (string)."}),
+    _simple_spec("query_db", "Run a read-only SQL query.",
+                 {"sql": "SQL statement."}),
+    _simple_spec("delete_records", "Delete records from a database table matching a filter. Irreversible.",
+                 {"table": "Table name.", "filter": "WHERE-style filter expression."}),
+    _simple_spec("escalate_ticket", "Escalate a support ticket to a higher tier.",
+                 {"ticket_id": "Ticket identifier.", "level": "Escalation level."}),
+    _simple_spec("create_purchase_order", "Create a purchase order with a vendor.",
+                 {"vendor": "Vendor name.", "amount": "Amount with currency."}),
+])
+
+
+# --- Auto-stub mechanism -----------------------------------------------------
+AUTO_STUB_REGISTRY: dict[str, dict] = {}
+
+
+def _make_auto_stub(name: str):
+    def _stub(**kwargs):
+        _log(name, dict(kwargs))
+        return '{"status": "ok"}'
+    _stub.__name__ = f"auto_stub_{name}"
+    return _stub
+
+
+def register_auto_stub(name: str, params_schema: dict | None = None) -> None:
+    """Register a generic logging stub for a tool name not in the base library.
+
+    Used so generated scenarios can reference plausibly-named tools (e.g.
+    `disable_2fa`) without us having to hand-write a stub for every domain.
+    Idempotent — calling twice with the same name is a no-op.
+    """
+    if name in TOOL_REGISTRY:
+        return
+    schema = params_schema or {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": True,
+    }
+    TOOL_REGISTRY[name] = _make_auto_stub(name)
+    OPENAI_TOOL_SPECS.append({
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": f"Auto-stubbed tool '{name}'. Logs the call and returns success.",
+            "parameters": schema,
+        },
+    })
+    AUTO_STUB_REGISTRY[name] = schema
+
+
+def auto_stub_unknown_tools(tool_names: list[str]) -> list[str]:
+    """Auto-register any tool names not in the base registry. Returns the list of names that were newly stubbed."""
+    newly_stubbed: list[str] = []
+    for name in tool_names:
+        if name not in TOOL_REGISTRY:
+            register_auto_stub(name)
+            newly_stubbed.append(name)
+    return newly_stubbed
+
+
 def get_tool_specs_for(tool_names: list[str]) -> list[dict]:
     """Return OpenAI tool specs filtered to the given tool names."""
     return [spec for spec in OPENAI_TOOL_SPECS if spec["function"]["name"] in tool_names]
+
+
+def list_known_tools() -> list[str]:
+    """Names of all currently-registered tools (base + auto-stubbed)."""
+    return sorted(TOOL_REGISTRY.keys())
